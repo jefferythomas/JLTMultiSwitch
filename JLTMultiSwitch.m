@@ -19,6 +19,7 @@
 
 @interface JLTMultiSwitch ()
 @property (nonatomic) UIView *JLT_positionViewsContainer;
+@property (nonatomic) CGFloat JLT_xOffset;
 @property (nonatomic) BOOL JLT_awake;
 @end
 
@@ -28,15 +29,16 @@
 {
     CGFloat knobX = [self JLT_knobXFromPosition:currentPosition];
     CGFloat positionViewsContainerX = [self JLT_positionViewsContainerXFromKnobX:knobX];
-    BOOL wasSet = [self isSet];
 
+    BOOL wasSet = [self isSet];
     _currentPosition = currentPosition;
+    BOOL isSet = [self isSet];
 
     if (!animated) {
         [self JLT_ajustKnobViewToX:knobX];
         [self JLT_ajustPositionViewsContainerToX:positionViewsContainerX];
         [self JLT_ajustUnsetViewToIsSet:[self isSet]];
-    } else if (!wasSet || ![self isSet]) {
+    } else if (!wasSet || !isSet) {
         [self JLT_ajustKnobViewToX:knobX];
         [self JLT_ajustPositionViewsContainerToX:positionViewsContainerX];
         [UIView animateWithDuration:0.075 animations:^{
@@ -70,11 +72,17 @@
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event
 {
     [super touchesBegan:touches withEvent:event];
-    CGFloat knobX = [self JLT_knobXFromTouch:[touches anyObject]];
+    CGFloat x = [[touches anyObject] locationInView:self].x;
+    CGFloat width = self.bounds.size.width/[self.positionViews count];
+    self.JLT_xOffset = x - ((width * (CGFloat)[self JLT_positionFromX:x]) + width/2);
 
-    [UIView animateWithDuration:0.075 animations:^{
-        [self JLT_ajustUnsetViewToIsSet:YES];
-    }];
+    CGFloat knobX = [self JLT_knobXFromX:x - self.JLT_xOffset];
+
+    if (![self isSet]) {
+        [UIView animateWithDuration:0.075 animations:^{
+            [self JLT_ajustUnsetViewToIsSet:YES];
+        }];
+    }
 
     [self JLT_ajustKnobViewToX:knobX];
     [self JLT_ajustPositionViewsContainerToX:[self JLT_positionViewsContainerXFromKnobX:knobX]];
@@ -83,7 +91,8 @@
 - (void)touchesMoved:(NSSet *)touches withEvent:(UIEvent *)event
 {
     [super touchesMoved:touches withEvent:event];
-    CGFloat knobX = [self JLT_knobXFromTouch:[touches anyObject]];
+    CGFloat x = [[touches anyObject] locationInView:self].x;
+    CGFloat knobX = [self JLT_knobXFromX:x - self.JLT_xOffset];
 
     [self JLT_ajustKnobViewToX:knobX];
     [self JLT_ajustPositionViewsContainerToX:[self JLT_positionViewsContainerXFromKnobX:knobX]];
@@ -92,9 +101,16 @@
 - (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
 {
     [super touchesEnded:touches withEvent:event];
-    CGFloat knobX = [self JLT_knobXFromTouch:[touches anyObject]];
+    CGFloat x = [[touches anyObject] locationInView:self].x;
 
-    [self setCurrentPosition:[self JLT_positionFromKnobX:knobX] animated:YES];
+    NSUInteger position = [self JLT_positionFromX:x - self.JLT_xOffset];
+
+    if (position != self.currentPosition) {
+        [self setCurrentPosition:position animated:YES];
+        [self sendActionsForControlEvents:UIControlEventValueChanged];
+    } else {
+        [self setCurrentPosition:position animated:YES];
+    }
 }
 
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
@@ -135,9 +151,9 @@
     self.currentPosition = self.currentPosition;
 }
 
-- (CGFloat)JLT_knobXFromTouch:(UITouch *)touch
+- (CGFloat)JLT_knobXFromX:(CGFloat)x
 {
-    CGFloat knobX = [touch locationInView:self].x - (self.knobView.frame.size.width/2.0);
+    CGFloat knobX = x - (self.knobView.frame.size.width/2.0);
     CGFloat minX = 0.0;
     CGFloat maxX = self.bounds.size.width - self.knobView.frame.size.width;
 
@@ -154,14 +170,13 @@
     return position * (width - knobwidth) / ([self.positionViews count] - 1);
 }
 
-- (NSUInteger)JLT_positionFromKnobX:(CGFloat)knobX
+- (NSUInteger)JLT_positionFromX:(CGFloat)x
 {
-    if (isnan(knobX)) return JLTMultiSwitchUnset;
+    if (isnan(x)) return JLTMultiSwitchUnset;
 
-    CGFloat knobwidth = self.knobView.frame.size.width;
-    CGFloat width = self.bounds.size.width;
+    CGFloat width = self.bounds.size.width / [self.positionViews count];
 
-    return lround(knobX / (width - knobwidth) * ([self.positionViews count] - 1));
+    return MIN(MAX(0, floor(x / width)), [self.positionViews count] - 1);
 }
 
 - (CGFloat)JLT_positionViewsContainerXFromKnobX:(CGFloat)knobX
